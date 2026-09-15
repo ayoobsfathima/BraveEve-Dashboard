@@ -1,12 +1,51 @@
 import express from "express";
 import { query } from "../db.js";
 import { requireLogin } from "../auth.js";
+import { sendCsv } from "../csvUtil.js";
 
 const router = express.Router();
 router.use(requireLogin);
 
 const VALID_TOOLS = ["braveeve", "nccn"];
 const VALID_ANSWERS = ["strongly_agree", "mostly_agree", "neither", "mostly_disagree", "strongly_disagree"];
+
+const QQ10_COLUMNS = [
+  "q1_helped_communicate", "q2_relevant", "q3_easy_to_complete", "q4_included_all_aspects",
+  "q5_enjoyed", "q6_would_repeat", "q7_too_long", "q8_too_embarrassing", "q9_too_complicated", "q10_upset_me",
+  "comment_improve", "comment_missed", "comment_overrepresented",
+];
+
+// CSV export — defined before the "/:patientId/:tool" param route below
+router.get("/export.csv", async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT p.patient_code, q.tool, ${QQ10_COLUMNS.join(", ")}, q.created_at
+       FROM qq10_responses q
+       JOIN patients p ON p.id = q.patient_id
+       ORDER BY q.created_at DESC`
+    );
+    sendCsv(res, "qq10_responses.csv", result.rows, ["patient_code", "tool", ...QQ10_COLUMNS, "created_at"]);
+  } catch (err) {
+    console.error("[qq10] export failed:", err);
+    res.status(500).json({ error: "Could not export QQ-10 responses." });
+  }
+});
+
+// Fetch an existing response for a patient+tool, if one exists — used to
+// pre-fill the form when reviewing/editing rather than creating fresh.
+router.get("/:patientId/:tool", async (req, res) => {
+  try {
+    const result = await query(
+      "SELECT * FROM qq10_responses WHERE patient_id = $1 AND tool = $2",
+      [req.params.patientId, req.params.tool]
+    );
+    if (result.rows.length === 0) return res.json(null);
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("[qq10] fetch existing failed:", err);
+    res.status(500).json({ error: "Could not load existing response." });
+  }
+});
 
 router.post("/", async (req, res) => {
   const b = req.body;

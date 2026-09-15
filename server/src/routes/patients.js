@@ -2,6 +2,7 @@ import express from "express";
 import QRCode from "qrcode";
 import { query } from "../db.js";
 import { requireLogin } from "../auth.js";
+import { sendCsv } from "../csvUtil.js";
 
 const router = express.Router();
 router.use(requireLogin);
@@ -21,6 +22,16 @@ async function upsertHcp(hcp) {
     [hcp.name, hcp.age || null, hcp.dateOfBirth || null, hcp.department || null, hcp.designation || null]
   );
   return result.rows[0].id;
+}
+
+// Updates an existing HCP row in place (used when editing a patient who
+// already has a treating HCP on file) rather than creating a duplicate row.
+async function updateHcp(hcpId, hcp) {
+  await query(
+    `UPDATE health_professionals SET name = $1, age = $2, date_of_birth = $3, department = $4, designation = $5
+     WHERE id = $6`,
+    [hcp.name, hcp.age || null, hcp.dateOfBirth || null, hcp.department || null, hcp.designation || null, hcpId]
+  );
 }
 
 // Create a patient (the socio-demographic + clinical form)
@@ -111,15 +122,98 @@ router.get("/", async (req, res) => {
   }
 });
 
-// One patient's full record
+// CSV export — defined before "/:id" so "export.csv" isn't swallowed by
+// the :id param route.
+router.get("/export.csv", async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT p.*, h.name AS treating_hcp_name, h.department AS treating_hcp_department,
+              h.designation AS treating_hcp_designation
+       FROM patients p
+       LEFT JOIN health_professionals h ON h.id = p.treating_hcp_id
+       ORDER BY p.created_at DESC`
+    );
+    const columns = [
+      "patient_code", "name", "age", "date_of_birth", "place_of_residence", "smartphone_familiarity",
+      "marital_status", "family_type", "education_level", "occupation_status", "occupation_detail",
+      "religion", "religion_other", "health_insurance", "insurance_type", "insurance_type_other",
+      "family_history_cancer", "family_history_relationship", "stage_of_cancer", "date_of_diagnosis",
+      "time_since_diagnosis_months", "treatment_intent", "surgery", "surgery_type", "surgery_type_other",
+      "reconstruction_done", "reconstruction_type", "chemotherapy", "chemotherapy_cycles",
+      "adjuvant_therapy", "neoadjuvant_therapy", "radiation_therapy", "radiation_sessions",
+      "hormone_therapy", "hormone_therapy_duration_months", "other_treatments",
+      "treating_hcp_name", "treating_hcp_department", "treating_hcp_designation", "created_at",
+    ];
+    sendCsv(res, "patients.csv", result.rows, columns);
+  } catch (err) {
+    console.error("[patients] export failed:", err);
+    res.status(500).json({ error: "Could not export patients." });
+  }
+});
+
+// One patient's full record, including their treating HCP's details
 router.get("/:id", async (req, res) => {
   try {
-    const result = await query("SELECT * FROM patients WHERE id = $1", [req.params.id]);
+    const result = await query(
+      `SELECT p.*, h.name AS treating_hcp_name, h.age AS treating_hcp_age,
+              h.department AS treating_hcp_department, h.designation AS treating_hcp_designation
+       FROM patients p
+       LEFT JOIN health_professionals h ON h.id = p.treating_hcp_id
+       WHERE p.id = $1`,
+      [req.params.id]
+    );
     if (result.rows.length === 0) return res.status(404).json({ error: "Patient not found." });
     res.json(result.rows[0]);
   } catch (err) {
     console.error("[patients] get failed:", err);
     res.status(500).json({ error: "Could not load patient." });
+  }
+});
+
+// Update an existing patient's record
+router.put("/:id", async (req, res) => {
+  try {
+    const b = req.body;
+    const existing = await query("SELECT treating_hcp_id FROM patients WHERE id = $1", [req.params.id]);
+    if (existing.rows.length === 0) return res.status(404).json({ error: "Patient not found." });
+
+    let treatingHcpId = existing.rows[0].treating_hcp_id;
+    if (b.treatingHcp && b.treatingHcp.name) {
+      if (treatingHcpId) {
+        await updateHcp(treatingHcpId, b.treatingHcp);
+      } else {
+        treatingHcpId = await upsertHcp(b.treatingHcp);
+      }
+    }
+
+    await query(
+      `UPDATE patients SET
+        name=$1, age=$2, date_of_birth=$3, place_of_residence=$4, smartphone_familiarity=$5,
+        marital_status=$6, family_type=$7, education_level=$8, occupation_status=$9, occupation_detail=$10,
+        religion=$11, religion_other=$12, health_insurance=$13, insurance_type=$14, insurance_type_other=$15,
+        family_history_cancer=$16, family_history_relationship=$17, stage_of_cancer=$18, date_of_diagnosis=$19,
+        time_since_diagnosis_months=$20, treatment_intent=$21, surgery=$22, surgery_type=$23, surgery_type_other=$24,
+        reconstruction_done=$25, reconstruction_type=$26, chemotherapy=$27, chemotherapy_cycles=$28,
+        adjuvant_therapy=$29, neoadjuvant_therapy=$30, radiation_therapy=$31, radiation_sessions=$32,
+        hormone_therapy=$33, hormone_therapy_duration_months=$34, other_treatments=$35,
+        treating_hcp_id=$36, updated_at=now()
+       WHERE id=$37`,
+      [
+        b.name, b.age || null, b.dateOfBirth || null, b.placeOfResidence || null, b.smartphoneFamiliarity ?? null,
+        b.maritalStatus || null, b.familyType || null, b.educationLevel || null, b.occupationStatus || null, b.occupationDetail || null,
+        b.religion || null, b.religionOther || null, b.healthInsurance ?? null, b.insuranceType || null, b.insuranceTypeOther || null,
+        b.familyHistoryCancer ?? null, b.familyHistoryRelationship || null, b.stageOfCancer || null, b.dateOfDiagnosis || null,
+        b.timeSinceDiagnosisMonths || null, b.treatmentIntent || null, b.surgery ?? null, b.surgeryType || null, b.surgeryTypeOther || null,
+        b.reconstructionDone ?? null, b.reconstructionType || null, b.chemotherapy ?? null, b.chemotherapyCycles || null,
+        b.adjuvantTherapy ?? null, b.neoadjuvantTherapy ?? null, b.radiationTherapy ?? null, b.radiationSessions || null,
+        b.hormoneTherapy ?? null, b.hormoneTherapyDurationMonths || null, b.otherTreatments || null,
+        treatingHcpId, req.params.id,
+      ]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[patients] update failed:", err);
+    res.status(500).json({ error: "Could not update patient." });
   }
 });
 
