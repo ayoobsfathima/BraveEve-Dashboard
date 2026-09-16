@@ -2,6 +2,7 @@ import express from "express";
 import { query } from "../db.js";
 import { requireLogin } from "../auth.js";
 import { sendCsv } from "../csvUtil.js";
+import { transcribeAndTranslate } from "../voice.js";
 
 const router = express.Router();
 router.use(requireLogin);
@@ -35,8 +36,8 @@ router.post("/", async (req, res) => {
     const result = await query(
       `INSERT INTO hcp_interviews (
         health_professional_id, interview_date,
-        q1_usefulness, q2_clarity, q3_workflow, q4_communication, q5_suggestions, created_by
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        q1_usefulness, q2_clarity, q3_workflow, q4_communication, q5_suggestions, native_notes, created_by
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
       RETURNING id`,
       [
         hcpId,
@@ -46,6 +47,7 @@ router.post("/", async (req, res) => {
         b.q3Workflow || null,
         b.q4Communication || null,
         b.q5Suggestions || null,
+        JSON.stringify(b.nativeNotes || {}),
         req.session.userId,
       ]
     );
@@ -92,6 +94,29 @@ router.get("/export.csv", async (req, res) => {
   }
 });
 
+// Voice note: raw audio in, { nativeText, englishText } out. Pure
+// speech-to-text -- nothing is saved here, the interviewer reviews/edits
+// the transcribed text before it's included in the actual Save.
+router.post(
+  "/transcribe",
+  express.raw({ type: "*/*", limit: "10mb" }),
+  async (req, res) => {
+    if (!req.body || !Buffer.isBuffer(req.body) || req.body.length === 0) {
+      return res.status(400).json({ error: "No audio received." });
+    }
+    try {
+      const mimeType = req.headers["content-type"] || "audio/webm";
+      const { nativeText, englishText } = await transcribeAndTranslate(req.body, mimeType);
+      res.json({ nativeText, englishText });
+    } catch (err) {
+      console.error("[interviews] transcribe failed:", err);
+      res.status(502).json({
+        error: "Couldn't transcribe that. Please try again, or type your notes instead.",
+      });
+    }
+  }
+);
+
 // One interview's full detail, including the HCP's info — for the
 // review/edit screen.
 router.get("/:id", async (req, res) => {
@@ -127,8 +152,8 @@ router.put("/:id", async (req, res) => {
     await query(
       `UPDATE hcp_interviews SET
         interview_date = $1, q1_usefulness = $2, q2_clarity = $3, q3_workflow = $4,
-        q4_communication = $5, q5_suggestions = $6
-       WHERE id = $7`,
+        q4_communication = $5, q5_suggestions = $6, native_notes = $7
+       WHERE id = $8`,
       [
         b.interviewDate || new Date().toISOString().slice(0, 10),
         b.q1Usefulness || null,
@@ -136,6 +161,7 @@ router.put("/:id", async (req, res) => {
         b.q3Workflow || null,
         b.q4Communication || null,
         b.q5Suggestions || null,
+        JSON.stringify(b.nativeNotes || {}),
         req.params.id,
       ]
     );

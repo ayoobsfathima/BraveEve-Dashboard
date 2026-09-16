@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS patients (
   name TEXT NOT NULL,
   age INTEGER,
   date_of_birth DATE,
+  phone_number TEXT,
   place_of_residence TEXT,      -- Urban / Semi-urban / Rural
   smartphone_familiarity BOOLEAN,
 
@@ -119,6 +120,7 @@ CREATE TABLE IF NOT EXISTS hcp_interviews (
   q3_workflow TEXT,       -- Impact on clinical workflow
   q4_communication TEXT,  -- Communication and team use
   q5_suggestions TEXT,    -- Suggestions for improvement
+  native_notes JSONB,     -- {"q1Usefulness": "...", ...} -- spoken-language text, if voice was used
 
   created_by INTEGER REFERENCES users(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -126,3 +128,8 @@ CREATE TABLE IF NOT EXISTS hcp_interviews (
 
 CREATE INDEX IF NOT EXISTS idx_qq10_patient ON qq10_responses(patient_id);
 CREATE INDEX IF NOT EXISTS idx_patients_code ON patients(patient_code);
+
+-- Safe to re-run against an existing database with data in it already --
+-- these are no-ops if the column is already there.
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS phone_number TEXT;
+ALTER TABLE hcp_interviews ADD COLUMN IF NOT EXISTS native_notes JSONB;

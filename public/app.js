@@ -170,6 +170,7 @@ function screenPatientForm(existing) {
         <div class="field"><label>Name</label><input type="text" id="f-name"/></div>
         <div class="field"><label>Age (years)</label><input type="number" id="f-age"/></div>
         <div class="field"><label>Date of birth</label><input type="date" id="f-dob"/></div>
+        <div class="field"><label>Phone number</label><input type="tel" id="f-phone" placeholder="e.g. 9876543210"/></div>
       </div>
       <div class="field"><label>Place of residence</label>
         ${radioGroup("place", [["Urban", "Urban"], ["Semi-urban", "Semi-urban"], ["Rural", "Rural"]])}
@@ -283,6 +284,7 @@ function screenPatientForm(existing) {
     setText("f-name", p.name);
     setText("f-age", p.age);
     setDate("f-dob", p.date_of_birth);
+    setText("f-phone", p.phone_number);
     setRadio("place", p.place_of_residence);
     setYesNo("smartphone", p.smartphone_familiarity);
     document.getElementById("f-marital").value = p.marital_status || "";
@@ -334,6 +336,7 @@ function screenPatientForm(existing) {
       name: val("f-name"),
       age: val("f-age"),
       dateOfBirth: val("f-dob"),
+      phoneNumber: val("f-phone"),
       placeOfResidence: radioVal("place"),
       smartphoneFamiliarity: yesNo("smartphone"),
       maritalStatus: document.getElementById("f-marital").value || null,
@@ -430,18 +433,19 @@ function screenPatientDetail(patient, qr) {
     <div class="card">
       <h2>QR codes</h2>
       <p style="color:var(--muted)">Show these to the patient at their OPD visit — they can scan whichever they're ready to use once they're home.</p>
+      ${patient.phone_number ? `<p style="color:var(--muted)">📞 On file: ${esc(patient.phone_number)}</p>` : `<p style="color:var(--muted)">No phone number on file — WhatsApp will ask you to pick a contact instead of sending directly.</p>`}
       <div class="qr-row">
         <div class="qr-card">
           <div class="label">BraveEve</div>
           <img src="${qr.braveeveQr}" alt="BraveEve QR code"/>
           <div class="url">${esc(qr.braveeveUrl)}</div>
-          <button class="btn-whatsapp" id="wa-braveeve-btn">📱 Share via WhatsApp</button>
+          <button class="btn-whatsapp" id="wa-braveeve-btn">📱 ${patient.phone_number ? "Send" : "Share"} via WhatsApp</button>
         </div>
         <div class="qr-card">
           <div class="label">NCCN Distress Thermometer</div>
           <img src="${qr.nccnQr}" alt="NCCN QR code"/>
           <div class="url">${esc(qr.nccnUrl)}</div>
-          <button class="btn-whatsapp" id="wa-nccn-btn">📱 Share via WhatsApp</button>
+          <button class="btn-whatsapp" id="wa-nccn-btn">📱 ${patient.phone_number ? "Send" : "Share"} via WhatsApp</button>
         </div>
       </div>
     </div>
@@ -459,9 +463,22 @@ function screenPatientDetail(patient, qr) {
   document.getElementById("qq10-braveeve-btn").onclick = () => navigateQQ10(patient, "braveeve");
   document.getElementById("qq10-nccn-btn").onclick = () => navigateQQ10(patient, "nccn");
 
+  // Indian mobile numbers are typically entered as 10 digits with no
+  // country code -- WhatsApp's link format needs the full international
+  // number with no spaces/dashes/+ sign, so we add "91" when it looks
+  // like a bare 10-digit number, and leave anything else as-is.
+  const cleanPhoneForWhatsApp = (raw) => {
+    if (!raw) return null;
+    const digits = raw.replace(/\D/g, "");
+    if (digits.length === 10) return `91${digits}`;
+    return digits || null;
+  };
+  const patientPhone = cleanPhoneForWhatsApp(patient.phone_number);
+
   const shareViaWhatsApp = (toolName, url) => {
     const message = `Hi! Whenever you have a few minutes, please use this link to complete the ${toolName}: ${url}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank");
+    const target = patientPhone ? `https://wa.me/${patientPhone}` : "https://wa.me/";
+    window.open(`${target}?text=${encodeURIComponent(message)}`, "_blank");
   };
   document.getElementById("wa-braveeve-btn").onclick = () => shareViaWhatsApp("BraveEve check-in", qr.braveeveUrl);
   document.getElementById("wa-nccn-btn").onclick = () => shareViaWhatsApp("NCCN Distress Thermometer", qr.nccnUrl);
@@ -638,9 +655,106 @@ async function navigateInterviewDetail(id) {
   }
 }
 
+let interviewNativeNotes = {};
+let activeInterviewRecorder = null;
+let interviewRecordingTimer = null;
+const INTERVIEW_MAX_RECORDING_MS = 28000; // Sarvam's sync endpoint caps at 30s
+
+function micFieldHtml(fieldId) {
+  const voiceSupported = !!(navigator.mediaDevices && window.MediaRecorder);
+  if (!voiceSupported) return "";
+  return `
+    <button class="mic-btn" id="mic-${fieldId}" type="button">🎙️ Record answer</button>
+    <div class="mic-status" id="mic-status-${fieldId}"></div>
+  `;
+}
+
+function wireInterviewMic(fieldId, textareaId) {
+  const micBtn = document.getElementById(`mic-${fieldId}`);
+  const micStatus = document.getElementById(`mic-status-${fieldId}`);
+  if (!micBtn) return;
+
+  micBtn.onclick = async () => {
+    if (activeInterviewRecorder && activeInterviewRecorder.state === "recording") {
+      activeInterviewRecorder.stop();
+      return;
+    }
+    await startInterviewRecording(fieldId, textareaId, micBtn, micStatus);
+  };
+}
+
+async function startInterviewRecording(fieldId, textareaId, micBtn, micStatus) {
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    micStatus.textContent = "Couldn't access the microphone. You can still type.";
+    return;
+  }
+
+  const chunks = [];
+  const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
+  activeInterviewRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+
+  activeInterviewRecorder.addEventListener("dataavailable", (e) => {
+    if (e.data.size > 0) chunks.push(e.data);
+  });
+
+  activeInterviewRecorder.addEventListener("stop", async () => {
+    stream.getTracks().forEach((t) => t.stop());
+    clearTimeout(interviewRecordingTimer);
+    micBtn.textContent = "🎙️ Record answer";
+    micBtn.classList.remove("recording");
+    micBtn.disabled = true;
+    micStatus.textContent = "Transcribing…";
+
+    const blobType = activeInterviewRecorder.mimeType || "audio/webm";
+    const blob = new Blob(chunks, { type: blobType });
+
+    try {
+      const res = await fetch("/api/interviews/transcribe", {
+        method: "POST",
+        headers: { "Content-Type": blobType },
+        body: blob,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Transcription failed");
+
+      const textarea = document.getElementById(textareaId);
+      if (textarea) {
+        const existingText = textarea.value.trim();
+        textarea.value = existingText ? `${existingText} ${data.englishText}`.trim() : (data.englishText || "");
+      }
+      interviewNativeNotes[fieldId] = interviewNativeNotes[fieldId]
+        ? `${interviewNativeNotes[fieldId]} ${data.nativeText || ""}`.trim()
+        : (data.nativeText || "");
+
+      micStatus.textContent = data.englishText
+        ? "Added below — feel free to edit it."
+        : "Didn't catch that clearly. Please try again or type instead.";
+    } catch (err) {
+      micStatus.textContent = "Couldn't transcribe that. Please try again or type instead.";
+    } finally {
+      micBtn.disabled = false;
+      activeInterviewRecorder = null;
+    }
+  });
+
+  activeInterviewRecorder.start();
+  micBtn.textContent = "⏹ Stop recording";
+  micBtn.classList.add("recording");
+  micStatus.textContent = "Listening… tap again to stop.";
+
+  interviewRecordingTimer = setTimeout(() => {
+    if (activeInterviewRecorder && activeInterviewRecorder.state === "recording") activeInterviewRecorder.stop();
+  }, INTERVIEW_MAX_RECORDING_MS);
+}
+
 function screenInterviewForm(existing) {
   const isEdit = !!existing;
   const i = existing || {};
+  interviewNativeNotes = (existing && existing.native_notes) || {};
+
   root.innerHTML = `
     ${topbar()}
     ${errorBanner()}
@@ -660,22 +774,27 @@ function screenInterviewForm(existing) {
       <div class="section-heading">Interview Questions</div>
       <div class="field">
         <label>1. Usefulness and Relevance — How useful are the distress reports for understanding patients' emotional and psychosocial needs?</label>
+        ${micFieldHtml("q1Usefulness")}
         <textarea id="f-q1">${esc(i.q1_usefulness || "")}</textarea>
       </div>
       <div class="field">
         <label>2. Clarity and Interpretation — How clear and easy to interpret is the information presented?</label>
+        ${micFieldHtml("q2Clarity")}
         <textarea id="f-q2">${esc(i.q2_clarity || "")}</textarea>
       </div>
       <div class="field">
         <label>3. Impact on Clinical Workflow — How do the reports fit into existing workflow and patient interactions?</label>
+        ${micFieldHtml("q3Workflow")}
         <textarea id="f-q3">${esc(i.q3_workflow || "")}</textarea>
       </div>
       <div class="field">
         <label>4. Communication and Team Use — How is the information used or shared within the care team?</label>
+        ${micFieldHtml("q4Communication")}
         <textarea id="f-q4">${esc(i.q4_communication || "")}</textarea>
       </div>
       <div class="field">
         <label>5. Suggestions for Improvement — What would make the reports more useful, actionable, or user-friendly?</label>
+        ${micFieldHtml("q5Suggestions")}
         <textarea id="f-q5">${esc(i.q5_suggestions || "")}</textarea>
       </div>
 
@@ -688,6 +807,12 @@ function screenInterviewForm(existing) {
   const backTo = () => navigateInterviews();
   document.getElementById("back-btn").onclick = backTo;
   document.getElementById("cancel-btn").onclick = backTo;
+
+  wireInterviewMic("q1Usefulness", "f-q1");
+  wireInterviewMic("q2Clarity", "f-q2");
+  wireInterviewMic("q3Workflow", "f-q3");
+  wireInterviewMic("q4Communication", "f-q4");
+  wireInterviewMic("q5Suggestions", "f-q5");
 
   document.getElementById("save-btn").onclick = async () => {
     const name = document.getElementById("f-hcp-name").value.trim();
@@ -709,6 +834,7 @@ function screenInterviewForm(existing) {
       q3Workflow: document.getElementById("f-q3").value.trim() || null,
       q4Communication: document.getElementById("f-q4").value.trim() || null,
       q5Suggestions: document.getElementById("f-q5").value.trim() || null,
+      nativeNotes: interviewNativeNotes,
     };
     try {
       if (isEdit) {

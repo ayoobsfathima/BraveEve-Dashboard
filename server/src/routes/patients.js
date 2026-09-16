@@ -43,7 +43,7 @@ router.post("/", async (req, res) => {
 
     const result = await query(
       `INSERT INTO patients (
-        patient_code, name, age, date_of_birth, place_of_residence, smartphone_familiarity,
+        patient_code, name, age, date_of_birth, phone_number, place_of_residence, smartphone_familiarity,
         marital_status, family_type, education_level, occupation_status, occupation_detail,
         religion, religion_other, health_insurance, insurance_type, insurance_type_other,
         family_history_cancer, family_history_relationship, stage_of_cancer, date_of_diagnosis,
@@ -54,13 +54,14 @@ router.post("/", async (req, res) => {
         treating_hcp_id, created_by
       ) VALUES (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-        $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38
+        $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39
       ) RETURNING id, patient_code`,
       [
         patientCode,
         b.name,
         b.age || null,
         b.dateOfBirth || null,
+        b.phoneNumber || null,
         b.placeOfResidence || null,
         b.smartphoneFamiliarity ?? null,
         b.maritalStatus || null,
@@ -188,18 +189,18 @@ router.put("/:id", async (req, res) => {
 
     await query(
       `UPDATE patients SET
-        name=$1, age=$2, date_of_birth=$3, place_of_residence=$4, smartphone_familiarity=$5,
-        marital_status=$6, family_type=$7, education_level=$8, occupation_status=$9, occupation_detail=$10,
-        religion=$11, religion_other=$12, health_insurance=$13, insurance_type=$14, insurance_type_other=$15,
-        family_history_cancer=$16, family_history_relationship=$17, stage_of_cancer=$18, date_of_diagnosis=$19,
-        time_since_diagnosis_months=$20, treatment_intent=$21, surgery=$22, surgery_type=$23, surgery_type_other=$24,
-        reconstruction_done=$25, reconstruction_type=$26, chemotherapy=$27, chemotherapy_cycles=$28,
-        adjuvant_therapy=$29, neoadjuvant_therapy=$30, radiation_therapy=$31, radiation_sessions=$32,
-        hormone_therapy=$33, hormone_therapy_duration_months=$34, other_treatments=$35,
-        treating_hcp_id=$36, updated_at=now()
-       WHERE id=$37`,
+        name=$1, age=$2, date_of_birth=$3, phone_number=$4, place_of_residence=$5, smartphone_familiarity=$6,
+        marital_status=$7, family_type=$8, education_level=$9, occupation_status=$10, occupation_detail=$11,
+        religion=$12, religion_other=$13, health_insurance=$14, insurance_type=$15, insurance_type_other=$16,
+        family_history_cancer=$17, family_history_relationship=$18, stage_of_cancer=$19, date_of_diagnosis=$20,
+        time_since_diagnosis_months=$21, treatment_intent=$22, surgery=$23, surgery_type=$24, surgery_type_other=$25,
+        reconstruction_done=$26, reconstruction_type=$27, chemotherapy=$28, chemotherapy_cycles=$29,
+        adjuvant_therapy=$30, neoadjuvant_therapy=$31, radiation_therapy=$32, radiation_sessions=$33,
+        hormone_therapy=$34, hormone_therapy_duration_months=$35, other_treatments=$36,
+        treating_hcp_id=$37, updated_at=now()
+       WHERE id=$38`,
       [
-        b.name, b.age || null, b.dateOfBirth || null, b.placeOfResidence || null, b.smartphoneFamiliarity ?? null,
+        b.name, b.age || null, b.dateOfBirth || null, b.phoneNumber || null, b.placeOfResidence || null, b.smartphoneFamiliarity ?? null,
         b.maritalStatus || null, b.familyType || null, b.educationLevel || null, b.occupationStatus || null, b.occupationDetail || null,
         b.religion || null, b.religionOther || null, b.healthInsurance ?? null, b.insuranceType || null, b.insuranceTypeOther || null,
         b.familyHistoryCancer ?? null, b.familyHistoryRelationship || null, b.stageOfCancer || null, b.dateOfDiagnosis || null,
