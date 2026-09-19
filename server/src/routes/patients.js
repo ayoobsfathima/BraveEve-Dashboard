@@ -13,6 +13,10 @@ async function nextPatientCode() {
   return `BE-P${String(n).padStart(3, "0")}`;
 }
 
+function randomFirstTool() {
+  return Math.random() < 0.5 ? "braveeve" : "nccn";
+}
+
 async function upsertHcp(hcp) {
   if (!hcp || !hcp.name) return null;
   const result = await query(
@@ -40,6 +44,7 @@ router.post("/", async (req, res) => {
     const b = req.body;
     const patientCode = await nextPatientCode();
     const treatingHcpId = await upsertHcp(b.treatingHcp);
+    const firstTool = randomFirstTool();
 
     const result = await query(
       `INSERT INTO patients (
@@ -51,11 +56,11 @@ router.post("/", async (req, res) => {
         reconstruction_done, reconstruction_type, chemotherapy, chemotherapy_cycles,
         adjuvant_therapy, neoadjuvant_therapy, radiation_therapy, radiation_sessions,
         hormone_therapy, hormone_therapy_duration_months, other_treatments,
-        treating_hcp_id, created_by
+        treating_hcp_id, first_tool, created_by
       ) VALUES (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-        $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39
-      ) RETURNING id, patient_code`,
+        $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40
+      ) RETURNING id, patient_code, first_tool`,
       [
         patientCode,
         b.name,
@@ -95,11 +100,12 @@ router.post("/", async (req, res) => {
         b.hormoneTherapyDurationMonths || null,
         b.otherTreatments || null,
         treatingHcpId,
+        firstTool,
         req.session.userId,
       ]
     );
 
-    res.json({ id: result.rows[0].id, patientCode: result.rows[0].patient_code });
+    res.json({ id: result.rows[0].id, patientCode: result.rows[0].patient_code, firstTool: result.rows[0].first_tool });
   } catch (err) {
     console.error("[patients] create failed:", err);
     res.status(500).json({ error: "Could not save patient." });
@@ -110,9 +116,11 @@ router.post("/", async (req, res) => {
 router.get("/", async (req, res) => {
   try {
     const result = await query(
-      `SELECT p.id, p.patient_code, p.name, p.created_at,
+      `SELECT p.id, p.patient_code, p.name, p.created_at, p.first_tool,
               (SELECT COUNT(*) FROM qq10_responses q WHERE q.patient_id = p.id AND q.tool = 'braveeve') AS qq10_braveeve_count,
-              (SELECT COUNT(*) FROM qq10_responses q WHERE q.patient_id = p.id AND q.tool = 'nccn') AS qq10_nccn_count
+              (SELECT COUNT(*) FROM qq10_responses q WHERE q.patient_id = p.id AND q.tool = 'nccn') AS qq10_nccn_count,
+              (SELECT status FROM tool_completions t WHERE t.patient_code = p.patient_code AND t.tool = 'braveeve') AS braveeve_status,
+              (SELECT status FROM tool_completions t WHERE t.patient_code = p.patient_code AND t.tool = 'nccn') AS nccn_status
        FROM patients p
        ORDER BY p.created_at DESC`
     );
@@ -143,7 +151,7 @@ router.get("/export.csv", async (req, res) => {
       "reconstruction_done", "reconstruction_type", "chemotherapy", "chemotherapy_cycles",
       "adjuvant_therapy", "neoadjuvant_therapy", "radiation_therapy", "radiation_sessions",
       "hormone_therapy", "hormone_therapy_duration_months", "other_treatments",
-      "treating_hcp_name", "treating_hcp_department", "treating_hcp_designation", "created_at",
+      "treating_hcp_name", "treating_hcp_department", "treating_hcp_designation", "first_tool", "created_at",
     ];
     sendCsv(res, "patients.csv", result.rows, columns);
   } catch (err) {
@@ -157,7 +165,9 @@ router.get("/:id", async (req, res) => {
   try {
     const result = await query(
       `SELECT p.*, h.name AS treating_hcp_name, h.age AS treating_hcp_age,
-              h.department AS treating_hcp_department, h.designation AS treating_hcp_designation
+              h.department AS treating_hcp_department, h.designation AS treating_hcp_designation,
+              (SELECT status FROM tool_completions t WHERE t.patient_code = p.patient_code AND t.tool = 'braveeve') AS braveeve_status,
+              (SELECT status FROM tool_completions t WHERE t.patient_code = p.patient_code AND t.tool = 'nccn') AS nccn_status
        FROM patients p
        LEFT JOIN health_professionals h ON h.id = p.treating_hcp_id
        WHERE p.id = $1`,
@@ -238,6 +248,28 @@ router.get("/:id/qrcodes", async (req, res) => {
   } catch (err) {
     console.error("[patients] qrcodes failed:", err);
     res.status(500).json({ error: "Could not generate QR codes." });
+  }
+});
+
+// Records who first sent a patient the link for a given tool, so the
+// completion email for that tool can go to just this person instead of the
+// whole team. First sender wins -- a later click (e.g. a re-send, or
+// another team member also sharing it) doesn't reassign ownership.
+router.post("/:id/mark-sent", async (req, res) => {
+  try {
+    const tool = req.body.tool;
+    if (tool !== "braveeve" && tool !== "nccn") {
+      return res.status(400).json({ error: "tool must be 'braveeve' or 'nccn'." });
+    }
+    const column = tool === "braveeve" ? "braveeve_sent_by" : "nccn_sent_by";
+    await query(
+      `UPDATE patients SET ${column} = $1 WHERE id = $2 AND ${column} IS NULL`,
+      [req.session.userId, req.params.id]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[patients] mark-sent failed:", err);
+    res.status(500).json({ error: "Could not record sender." });
   }
 });
 

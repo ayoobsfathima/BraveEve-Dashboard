@@ -7,6 +7,7 @@ import authRoutes from "./routes/auth.js";
 import patientsRoutes from "./routes/patients.js";
 import qq10Routes from "./routes/qq10.js";
 import interviewsRoutes from "./routes/interviews.js";
+import { startCompletionPoller } from "./completionPoller.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, "..", "..", "public");
@@ -30,4 +31,5 @@ app.get("/api/session-check", requireLogin, (req, res) => res.json({ ok: true })
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`BraveEve Dashboard listening on http://localhost:${PORT}`);
+  startCompletionPoller();
 });

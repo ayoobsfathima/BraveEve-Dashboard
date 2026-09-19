@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   display_name TEXT NOT NULL,
+  email TEXT, -- where completion alerts go for patients this person sent a link to
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -75,6 +76,17 @@ CREATE TABLE IF NOT EXISTS patients (
   -- Treating health care professional for this patient (from the same form)
   treating_hcp_id INTEGER REFERENCES health_professionals(id),
 
+  -- Which tool this patient is assigned to complete first, to counterbalance
+  -- ordering effects. Assigned once, randomly, at patient creation, and never
+  -- changed afterwards.
+  first_tool TEXT CHECK (first_tool IN ('braveeve', 'nccn')),
+
+  -- Whoever clicked "Send via WhatsApp" first for each tool -- the
+  -- completion email for that tool goes to just this person instead of the
+  -- whole team, once they're recorded. Set once, first sender wins.
+  braveeve_sent_by INTEGER REFERENCES users(id),
+  nccn_sent_by INTEGER REFERENCES users(id),
+
   created_by INTEGER REFERENCES users(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -126,10 +138,40 @@ CREATE TABLE IF NOT EXISTS hcp_interviews (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Records a patient finishing (or bailing out of) BraveEve or NCCN, as
+-- detected by polling their Google Sheets. One row per patient per tool --
+-- the study design has each patient complete each tool once, same as
+-- qq10_responses. Driving a "ready for QQ-10 interview" email alert and an
+-- in-dashboard status column.
+CREATE TABLE IF NOT EXISTS tool_completions (
+  id SERIAL PRIMARY KEY,
+  patient_code TEXT NOT NULL,       -- matches patients.patient_code; not a FK
+                                     -- since the sheet only knows the code,
+                                     -- and a stray/mistyped pid shouldn't crash the poller
+  tool TEXT NOT NULL CHECK (tool IN ('braveeve', 'nccn')),
+  status TEXT NOT NULL CHECK (status IN ('completed', 'stopped_early')),
+  detected_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  notified_at TIMESTAMPTZ,          -- set once the email alert has gone out
+
+  UNIQUE (patient_code, tool)
+);
+
 CREATE INDEX IF NOT EXISTS idx_qq10_patient ON qq10_responses(patient_id);
 CREATE INDEX IF NOT EXISTS idx_patients_code ON patients(patient_code);
+CREATE INDEX IF NOT EXISTS idx_tool_completions_code ON tool_completions(patient_code);
 
 -- Safe to re-run against an existing database with data in it already --
 -- these are no-ops if the column is already there.
 ALTER TABLE patients ADD COLUMN IF NOT EXISTS phone_number TEXT;
 ALTER TABLE hcp_interviews ADD COLUMN IF NOT EXISTS native_notes JSONB;
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS first_tool TEXT;
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'patients_first_tool_check'
+  ) THEN
+    ALTER TABLE patients ADD CONSTRAINT patients_first_tool_check CHECK (first_tool IN ('braveeve', 'nccn'));
+  END IF;
+END $$;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS braveeve_sent_by INTEGER REFERENCES users(id);
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS nccn_sent_by INTEGER REFERENCES users(id);

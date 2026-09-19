@@ -87,6 +87,12 @@ async function navigateHome() {
   screenHome(patients);
 }
 
+function toolStatusLabel(status) {
+  if (status === "completed") return "✓ completed";
+  if (status === "stopped_early") return "⚠ stopped early";
+  return "—";
+}
+
 function screenHome(patients) {
   root.innerHTML = `
     ${topbar()}
@@ -110,13 +116,16 @@ function screenHome(patients) {
       <input type="text" id="patient-search" placeholder="Search by name or code..." style="margin-bottom:12px"/>
       <table>
         <thead>
-          <tr><th>Code</th><th>Name</th><th>QQ-10 BraveEve</th><th>QQ-10 NCCN</th><th>Added</th></tr>
+          <tr><th>Code</th><th>Name</th><th>First tool</th><th>BraveEve</th><th>NCCN</th><th>QQ-10 BraveEve</th><th>QQ-10 NCCN</th><th>Added</th></tr>
         </thead>
         <tbody id="patient-rows">
           ${patients.map((p) => `
             <tr class="clickable" data-id="${p.id}" data-search="${esc((p.patient_code + " " + p.name).toLowerCase())}">
               <td><span class="badge">${esc(p.patient_code)}</span></td>
               <td>${esc(p.name)}</td>
+              <td>${p.first_tool === "braveeve" ? "BraveEve" : p.first_tool === "nccn" ? "NCCN" : "—"}</td>
+              <td>${toolStatusLabel(p.braveeve_status)}</td>
+              <td>${toolStatusLabel(p.nccn_status)}</td>
               <td>${Number(p.qq10_braveeve_count) > 0 ? "✓ done" : "—"}</td>
               <td>${Number(p.qq10_nccn_count) > 0 ? "✓ done" : "—"}</td>
               <td>${new Date(p.created_at).toLocaleDateString()}</td>
@@ -168,8 +177,8 @@ function screenPatientForm(existing) {
       <div class="section-heading">Patient Information</div>
       <div class="field-row">
         <div class="field"><label>Name</label><input type="text" id="f-name"/></div>
-        <div class="field"><label>Age (years)</label><input type="number" id="f-age"/></div>
         <div class="field"><label>Date of birth</label><input type="date" id="f-dob"/></div>
+        <div class="field"><label>Age (years)</label><input type="number" id="f-age" placeholder="Auto-filled from DOB"/></div>
         <div class="field"><label>Phone number</label><input type="tel" id="f-phone" placeholder="e.g. 9876543210"/></div>
       </div>
       <div class="field"><label>Place of residence</label>
@@ -323,6 +332,27 @@ function screenPatientForm(existing) {
     setText("f-hcp-designation", p.treating_hcp_designation);
   }
 
+  // --- auto-calculate age from date of birth ---
+  const calcAge = (dobStr) => {
+    if (!dobStr) return null;
+    const dob = new Date(dobStr);
+    if (isNaN(dob.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const monthDiff = today.getMonth() - dob.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) age--;
+    return age >= 0 && age < 130 ? age : null;
+  };
+  document.getElementById("f-dob").addEventListener("change", (e) => {
+    const age = calcAge(e.target.value);
+    if (age !== null) document.getElementById("f-age").value = age;
+  });
+  // if editing an existing patient with a DOB but no stored age, fill it in now
+  if (isEdit && p.date_of_birth && (p.age === null || p.age === undefined || p.age === "")) {
+    const age = calcAge(String(p.date_of_birth).slice(0, 10));
+    if (age !== null) document.getElementById("f-age").value = age;
+  }
+
   const radioVal = (name) => root.querySelector(`input[name="${name}"]:checked`)?.value;
   const yesNo = (name) => {
     const v = radioVal(name);
@@ -433,21 +463,25 @@ function screenPatientDetail(patient, qr) {
     <div class="card">
       <h2>QR codes</h2>
       <p style="color:var(--muted)">Show these to the patient at their OPD visit — they can scan whichever they're ready to use once they're home.</p>
+      ${patient.first_tool ? `<p><span class="badge">Randomized order: complete ${patient.first_tool === "braveeve" ? "BraveEve" : "NCCN Distress Thermometer"} first</span></p>` : ""}
       ${patient.phone_number ? `<p style="color:var(--muted)">📞 On file: ${esc(patient.phone_number)}</p>` : `<p style="color:var(--muted)">No phone number on file — WhatsApp will ask you to pick a contact instead of sending directly.</p>`}
       <div class="qr-row">
         <div class="qr-card">
-          <div class="label">BraveEve</div>
+          <div class="label">BraveEve ${patient.first_tool === "braveeve" ? "— go first" : patient.first_tool === "nccn" ? "— go second" : ""}</div>
           <img src="${qr.braveeveQr}" alt="BraveEve QR code"/>
           <div class="url">${esc(qr.braveeveUrl)}</div>
+          <div style="margin:4px 0">${toolStatusLabel(patient.braveeve_status)}</div>
           <button class="btn-whatsapp" id="wa-braveeve-btn">📱 ${patient.phone_number ? "Send" : "Share"} via WhatsApp</button>
         </div>
         <div class="qr-card">
-          <div class="label">NCCN Distress Thermometer</div>
+          <div class="label">NCCN Distress Thermometer ${patient.first_tool === "nccn" ? "— go first" : patient.first_tool === "braveeve" ? "— go second" : ""}</div>
           <img src="${qr.nccnQr}" alt="NCCN QR code"/>
           <div class="url">${esc(qr.nccnUrl)}</div>
+          <div style="margin:4px 0">${toolStatusLabel(patient.nccn_status)}</div>
           <button class="btn-whatsapp" id="wa-nccn-btn">📱 ${patient.phone_number ? "Send" : "Share"} via WhatsApp</button>
         </div>
       </div>
+      <p style="color:var(--muted);font-size:13px">Whoever sends a link below gets emailed automatically when that patient finishes it, so you know it's time for the QQ-10 interview.</p>
     </div>
 
     <div class="card">
@@ -475,13 +509,21 @@ function screenPatientDetail(patient, qr) {
   };
   const patientPhone = cleanPhoneForWhatsApp(patient.phone_number);
 
-  const shareViaWhatsApp = (toolName, url) => {
+  const shareViaWhatsApp = (toolName, url, tool) => {
     const message = `Hi! Whenever you have a few minutes, please use this link to complete the ${toolName}: ${url}`;
     const target = patientPhone ? `https://wa.me/${patientPhone}` : "https://wa.me/";
+    // Open first, synchronously in response to the click, so browsers don't
+    // treat it as a blocked popup -- the tracking call below doesn't need
+    // to finish (or even succeed) before that happens.
     window.open(`${target}?text=${encodeURIComponent(message)}`, "_blank");
+    // Records who sent this link, so the "patient finished" email later
+    // goes to this person specifically rather than the whole team (see
+    // /:id/mark-sent). Fire-and-forget -- a failure here shouldn't block
+    // or alarm whoever's sending the link.
+    api(`/api/patients/${patient.id}/mark-sent`, { method: "POST", body: JSON.stringify({ tool }) }).catch(() => {});
   };
-  document.getElementById("wa-braveeve-btn").onclick = () => shareViaWhatsApp("BraveEve check-in", qr.braveeveUrl);
-  document.getElementById("wa-nccn-btn").onclick = () => shareViaWhatsApp("NCCN Distress Thermometer", qr.nccnUrl);
+  document.getElementById("wa-braveeve-btn").onclick = () => shareViaWhatsApp("BraveEve check-in", qr.braveeveUrl, "braveeve");
+  document.getElementById("wa-nccn-btn").onclick = () => shareViaWhatsApp("NCCN Distress Thermometer", qr.nccnUrl, "nccn");
   const logoutBtn = document.getElementById("logout-btn");
   if (logoutBtn) logoutBtn.onclick = async () => { await api("/api/auth/logout", { method: "POST" }); currentUser = null; screenLogin(); };
 }
