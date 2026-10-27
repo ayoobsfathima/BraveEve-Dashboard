@@ -175,3 +175,13 @@ END $$;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE patients ADD COLUMN IF NOT EXISTS braveeve_sent_by INTEGER REFERENCES users(id);
 ALTER TABLE patients ADD COLUMN IF NOT EXISTS nccn_sent_by INTEGER REFERENCES users(id);
+
+-- How the study tools were administered to this patient: 'in_person' or
+-- 'phone_call'. Captured once per patient, applies to both tools.
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS administration_mode TEXT;
+
+-- QQ-10: which language the form was filled in (en / kn), and the
+-- spoken-language text of any voice-recorded comments (same idea as
+-- hcp_interviews.native_notes).
+ALTER TABLE qq10_responses ADD COLUMN IF NOT EXISTS language TEXT;
+ALTER TABLE qq10_responses ADD COLUMN IF NOT EXISTS native_notes JSONB;

@@ -181,6 +181,9 @@ function screenPatientForm(existing) {
         <div class="field"><label>Age (years)</label><input type="number" id="f-age" placeholder="Auto-filled from DOB"/></div>
         <div class="field"><label>Phone number</label><input type="tel" id="f-phone" placeholder="e.g. 9876543210"/></div>
       </div>
+      <div class="field"><label>How are the tools being administered?</label>
+        ${radioGroup("admin_mode", [["in_person", "In person"], ["phone_call", "By phone call"]])}
+      </div>
       <div class="field"><label>Place of residence</label>
         ${radioGroup("place", [["Urban", "Urban"], ["Semi-urban", "Semi-urban"], ["Rural", "Rural"]])}
       </div>
@@ -294,6 +297,7 @@ function screenPatientForm(existing) {
     setText("f-age", p.age);
     setDate("f-dob", p.date_of_birth);
     setText("f-phone", p.phone_number);
+    setRadio("admin_mode", p.administration_mode);
     setRadio("place", p.place_of_residence);
     setYesNo("smartphone", p.smartphone_familiarity);
     document.getElementById("f-marital").value = p.marital_status || "";
@@ -367,6 +371,7 @@ function screenPatientForm(existing) {
       age: val("f-age"),
       dateOfBirth: val("f-dob"),
       phoneNumber: val("f-phone"),
+      administrationMode: radioVal("admin_mode") || null,
       placeOfResidence: radioVal("place"),
       smartphoneFamiliarity: yesNo("smartphone"),
       maritalStatus: document.getElementById("f-marital").value || null,
@@ -455,6 +460,7 @@ function screenPatientDetail(patient, qr) {
     <div class="card">
       <button class="btn secondary small" id="back-btn">← All patients</button>
       <h2 style="margin-top:14px">${esc(patient.name)} <span class="badge">${esc(patient.patient_code)}</span></h2>
+      <p style="color:var(--muted)">Administered: ${patient.administration_mode === "in_person" ? "In person" : patient.administration_mode === "phone_call" ? "By phone call" : "not recorded yet — set it under Edit Patient Details"}</p>
       <div class="btn-row">
         <button class="btn secondary small" id="edit-patient-btn">Edit Patient Details</button>
       </div>
@@ -532,30 +538,77 @@ function screenPatientDetail(patient, qr) {
 // QQ-10 form
 // ---------------------------------------------------------------------
 
-const QQ10_QUESTIONS = [
-  ["q1HelpedCommunicate", "The questionnaire helped me to communicate about my condition"],
-  ["q2Relevant", "The questionnaire was relevant to my condition"],
-  ["q3EasyToComplete", "The questionnaire was easy to complete"],
-  ["q4IncludedAllAspects", "The questionnaire included all the aspects of my condition that I am concerned about"],
-  ["q5Enjoyed", "I enjoyed filling in the questionnaire"],
-  ["q6WouldRepeat", "I would be happy to complete the questionnaire again in the future as part of my routine care"],
-  ["q7TooLong", "The questionnaire was too long"],
-  ["q8TooEmbarrassing", "The questionnaire was too embarrassing"],
-  ["q9TooComplicated", "The questionnaire was too complicated"],
-  ["q10UpsetMe", "The questionnaire upset me"],
+// QQ-10 wording. English is the standard instrument text. The Kannada text
+// below is a DRAFT translation -- it must be reviewed by a native Kannada
+// speaker before being used with patients. To swap in the official
+// translation, just replace the strings in QQ10_TEXT.kn; nothing else in
+// the app needs to change.
+const QQ10_FIELDS = [
+  "q1HelpedCommunicate", "q2Relevant", "q3EasyToComplete", "q4IncludedAllAspects", "q5Enjoyed",
+  "q6WouldRepeat", "q7TooLong", "q8TooEmbarrassing", "q9TooComplicated", "q10UpsetMe",
 ];
+const QQ10_VALUES = ["strongly_agree", "mostly_agree", "neither", "mostly_disagree", "strongly_disagree"];
 
-const QQ10_OPTIONS = [
-  ["strongly_agree", "Strongly agree"],
-  ["mostly_agree", "Mostly agree"],
-  ["neither", "Neither agree or disagree"],
-  ["mostly_disagree", "Mostly disagree"],
-  ["strongly_disagree", "Strongly disagree"],
-];
+const QQ10_TEXT = {
+  en: {
+    instructions: "Please circle the answer below each statement that best fits the patient's feelings about the questionnaire they recently completed.",
+    questions: [
+      "The questionnaire helped me to communicate about my condition",
+      "The questionnaire was relevant to my condition",
+      "The questionnaire was easy to complete",
+      "The questionnaire included all the aspects of my condition that I am concerned about",
+      "I enjoyed filling in the questionnaire",
+      "I would be happy to complete the questionnaire again in the future as part of my routine care",
+      "The questionnaire was too long",
+      "The questionnaire was too embarrassing",
+      "The questionnaire was too complicated",
+      "The questionnaire upset me",
+    ],
+    options: ["Strongly agree", "Mostly agree", "Neither agree or disagree", "Mostly disagree", "Strongly disagree"],
+    commentsHeading: "Additional Comments",
+    commentImprove: "Comments or suggestions on how the questionnaire could be improved (structure, appearance, or design)?",
+    commentMissed: "Were any important symptoms, problems, or concerns missed out by the questionnaire?",
+    commentOverrepresented: "Do you feel any areas or problems in the questionnaire were over-represented?",
+  },
+  kn: {
+    instructions: "ನೀವು ಇತ್ತೀಚೆಗೆ ಪೂರ್ಣಗೊಳಿಸಿದ ಪ್ರಶ್ನಾವಳಿಯ ಬಗ್ಗೆ ನಿಮ್ಮ ಭಾವನೆಗಳಿಗೆ ಹೆಚ್ಚು ಹೊಂದುವ ಉತ್ತರವನ್ನು ಪ್ರತಿ ಹೇಳಿಕೆಯ ಕೆಳಗೆ ಗುರುತಿಸಿ.",
+    questions: [
+      "ಪ್ರಶ್ನಾವಳಿಯು ನನ್ನ ಆರೋಗ್ಯ ಸ್ಥಿತಿಯ ಬಗ್ಗೆ ಸಂವಹನ ನಡೆಸಲು ನನಗೆ ಸಹಾಯ ಮಾಡಿತು",
+      "ಪ್ರಶ್ನಾವಳಿಯು ನನ್ನ ಆರೋಗ್ಯ ಸ್ಥಿತಿಗೆ ಸಂಬಂಧಿಸಿತ್ತು",
+      "ಪ್ರಶ್ನಾವಳಿಯನ್ನು ಭರ್ತಿ ಮಾಡುವುದು ಸುಲಭವಾಗಿತ್ತು",
+      "ನನಗೆ ಚಿಂತೆಯಾಗಿರುವ ನನ್ನ ಆರೋಗ್ಯ ಸ್ಥಿತಿಯ ಎಲ್ಲಾ ಅಂಶಗಳನ್ನೂ ಪ್ರಶ್ನಾವಳಿಯು ಒಳಗೊಂಡಿತ್ತು",
+      "ಪ್ರಶ್ನಾವಳಿಯನ್ನು ಭರ್ತಿ ಮಾಡುವುದನ್ನು ನಾನು ಆನಂದಿಸಿದೆ",
+      "ಭವಿಷ್ಯದಲ್ಲಿ ನನ್ನ ನಿಯಮಿತ ಆರೈಕೆಯ ಭಾಗವಾಗಿ ಈ ಪ್ರಶ್ನಾವಳಿಯನ್ನು ಮತ್ತೆ ಭರ್ತಿ ಮಾಡಲು ನನಗೆ ಸಂತೋಷವಾಗುತ್ತದೆ",
+      "ಪ್ರಶ್ನಾವಳಿಯು ತುಂಬಾ ಉದ್ದವಾಗಿತ್ತು",
+      "ಪ್ರಶ್ನಾವಳಿಯು ತುಂಬಾ ಮುಜುಗರ ಉಂಟುಮಾಡಿತು",
+      "ಪ್ರಶ್ನಾವಳಿಯು ತುಂಬಾ ಸಂಕೀರ್ಣವಾಗಿತ್ತು",
+      "ಪ್ರಶ್ನಾವಳಿಯು ನನ್ನನ್ನು ಅಸಮಾಧಾನಗೊಳಿಸಿತು",
+    ],
+    options: [
+      "ಬಲವಾಗಿ ಒಪ್ಪುತ್ತೇನೆ",
+      "ಬಹುಮಟ್ಟಿಗೆ ಒಪ್ಪುತ್ತೇನೆ",
+      "ಒಪ್ಪುವುದೂ ಇಲ್ಲ, ಒಪ್ಪದಿರುವುದೂ ಇಲ್ಲ",
+      "ಬಹುಮಟ್ಟಿಗೆ ಒಪ್ಪುವುದಿಲ್ಲ",
+      "ಬಲವಾಗಿ ಒಪ್ಪುವುದಿಲ್ಲ",
+    ],
+    commentsHeading: "ಹೆಚ್ಚುವರಿ ಕಾಮೆಂಟ್‌ಗಳು",
+    commentImprove: "ಪ್ರಶ್ನಾವಳಿಯನ್ನು ಹೇಗೆ ಸುಧಾರಿಸಬಹುದು (ರಚನೆ, ಸ್ವರೂಪ ಅಥವಾ ವಿನ್ಯಾಸ) ಎಂಬ ಬಗ್ಗೆ ಯಾವುದೇ ಕಾಮೆಂಟ್‌ಗಳು ಅಥವಾ ಸಲಹೆಗಳಿವೆಯೇ?",
+    commentMissed: "ಪ್ರಶ್ನಾವಳಿಯಲ್ಲಿ ಯಾವುದೇ ಪ್ರಮುಖ ಲಕ್ಷಣಗಳು, ಸಮಸ್ಯೆಗಳು ಅಥವಾ ಕಾಳಜಿಗಳು ಬಿಟ್ಟುಹೋಗಿವೆಯೇ?",
+    commentOverrepresented: "ಪ್ರಶ್ನಾವಳಿಯಲ್ಲಿ ಯಾವುದೇ ಕ್ಷೇತ್ರಗಳು ಅಥವಾ ಸಮಸ್ಯೆಗಳಿಗೆ ಅಗತ್ಯಕ್ಕಿಂತ ಹೆಚ್ಚು ಒತ್ತು ನೀಡಲಾಗಿದೆ ಎಂದು ನಿಮಗೆ ಅನಿಸುತ್ತದೆಯೇ?",
+  },
+};
 
 function camelToSnake(str) {
   return str.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
 }
+
+// Spoken-language text for voice-recorded QQ-10 comments, keyed by field
+// (commentImprove / commentMissed / commentOverrepresented). Saved
+// alongside the English text, same idea as the HCP interviews.
+let qq10NativeNotes = {};
+let activeQq10Recorder = null;
+let qq10RecordingTimer = null;
+const QQ10_MAX_RECORDING_MS = 28000; // Sarvam's sync endpoint caps at 30s
 
 async function navigateQQ10(patient, tool) {
   lastError = null;
@@ -565,12 +618,120 @@ async function navigateQQ10(patient, tool) {
   } catch (err) {
     lastError = err.message;
   }
-  screenQQ10(patient, tool, existing);
+  qq10NativeNotes = (existing && existing.native_notes) || {};
+  screenQQ10(patient, tool, existing, null);
 }
 
-function screenQQ10(patient, tool, existing) {
+function qq10MicHtml(fieldId) {
+  const voiceSupported = !!(navigator.mediaDevices && window.MediaRecorder);
+  if (!voiceSupported) return "";
+  return `
+    <button class="mic-btn" id="mic-${fieldId}" type="button">🎙️ Record answer</button>
+    <div class="mic-status" id="mic-status-${fieldId}"></div>
+  `;
+}
+
+function wireQq10Mic(fieldId, textareaId) {
+  const micBtn = document.getElementById(`mic-${fieldId}`);
+  const micStatus = document.getElementById(`mic-status-${fieldId}`);
+  if (!micBtn) return;
+
+  micBtn.onclick = async () => {
+    if (activeQq10Recorder && activeQq10Recorder.state === "recording") {
+      activeQq10Recorder.stop();
+      return;
+    }
+    await startQq10Recording(fieldId, textareaId, micBtn, micStatus);
+  };
+}
+
+async function startQq10Recording(fieldId, textareaId, micBtn, micStatus) {
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    micStatus.textContent = "Couldn't access the microphone. You can still type.";
+    return;
+  }
+
+  const chunks = [];
+  const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
+  const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+  activeQq10Recorder = recorder;
+
+  recorder.addEventListener("dataavailable", (e) => {
+    if (e.data.size > 0) chunks.push(e.data);
+  });
+
+  recorder.addEventListener("stop", async () => {
+    stream.getTracks().forEach((t) => t.stop());
+    clearTimeout(qq10RecordingTimer);
+    micBtn.textContent = "🎙️ Record answer";
+    micBtn.classList.remove("recording");
+    micBtn.disabled = true;
+    micStatus.textContent = "Transcribing…";
+
+    const blobType = recorder.mimeType || "audio/webm";
+    const blob = new Blob(chunks, { type: blobType });
+
+    try {
+      const res = await fetch("/api/qq10/transcribe", {
+        method: "POST",
+        headers: { "Content-Type": blobType },
+        body: blob,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Transcription failed");
+
+      const textarea = document.getElementById(textareaId);
+      if (textarea) {
+        const existingText = textarea.value.trim();
+        textarea.value = existingText ? `${existingText} ${data.englishText}`.trim() : (data.englishText || "");
+      }
+      qq10NativeNotes[fieldId] = qq10NativeNotes[fieldId]
+        ? `${qq10NativeNotes[fieldId]} ${data.nativeText || ""}`.trim()
+        : (data.nativeText || "");
+
+      micStatus.textContent = data.englishText
+        ? "Added below (translated to English) — feel free to edit it."
+        : "Didn't catch that clearly. Please try again or type instead.";
+    } catch (err) {
+      micStatus.textContent = "Couldn't transcribe that. Please try again or type instead.";
+    } finally {
+      micBtn.disabled = false;
+      activeQq10Recorder = null;
+    }
+  });
+
+  recorder.start();
+  micBtn.textContent = "⏹ Stop recording";
+  micBtn.classList.add("recording");
+  micStatus.textContent = "Listening… tap again to stop.";
+
+  qq10RecordingTimer = setTimeout(() => {
+    if (activeQq10Recorder && activeQq10Recorder.state === "recording") activeQq10Recorder.stop();
+  }, QQ10_MAX_RECORDING_MS);
+}
+
+// draft: in-progress values carried across a language switch, so flipping
+// English <-> Kannada doesn't wipe what's already been ticked/typed.
+function screenQQ10(patient, tool, existing, draft) {
   const isEdit = !!existing;
   const toolLabel = tool === "braveeve" ? "BraveEve" : "NCCN Distress Thermometer";
+  const lang = (draft && draft.language) || (existing && existing.language) || "en";
+  const T = QQ10_TEXT[lang] || QQ10_TEXT.en;
+
+  const answerFor = (field) => (draft ? draft.answers[field] : existing && existing[camelToSnake(field)]) || null;
+  const commentFor = (field, col) => (draft ? draft.comments[field] : existing && existing[col]) || "";
+
+  const commentBlock = (field, col, textareaId) => `
+    <div class="field">
+      <label>${esc(T[field])}</label>
+      ${qq10MicHtml(field)}
+      <textarea id="${textareaId}">${esc(commentFor(field, col))}</textarea>
+    </div>
+  `;
+
   root.innerHTML = `
     ${topbar()}
     ${errorBanner()}
@@ -578,32 +739,32 @@ function screenQQ10(patient, tool, existing) {
       <button class="btn secondary small" id="back-btn">← ${esc(patient.name)}</button>
       <h2 style="margin-top:14px">QQ-10 — ${toolLabel}</h2>
       ${isEdit ? `<p style="color:var(--muted)">A response is already on file for this patient/tool — reviewing it below. Saving will update it.</p>` : ""}
-      <p style="color:var(--muted)">Please circle the answer below each statement that best fits the patient's feelings about the questionnaire they recently completed.</p>
 
-      ${QQ10_QUESTIONS.map(([field, text], i) => `
+      <div class="field">
+        <label>Language of this QQ-10</label>
+        <div class="radio-inline">
+          <label><input type="radio" name="qq10_lang" value="en" ${lang === "en" ? "checked" : ""}/> English</label>
+          <label><input type="radio" name="qq10_lang" value="kn" ${lang === "kn" ? "checked" : ""}/> ಕನ್ನಡ (Kannada)</label>
+        </div>
+      </div>
+
+      <p style="color:var(--muted)">${esc(T.instructions)}</p>
+
+      ${QQ10_FIELDS.map((field, i) => `
         <div class="likert-question">
-          <p>${i + 1}. ${esc(text)}</p>
+          <p>${i + 1}. ${esc(T.questions[i])}</p>
           <div class="likert-options">
-            ${QQ10_OPTIONS.map(([value, label]) => `
-              <label><input type="radio" name="${field}" value="${value}" ${existing && existing[camelToSnake(field)] === value ? "checked" : ""}/> ${esc(label)}</label>
+            ${QQ10_VALUES.map((value, j) => `
+              <label><input type="radio" name="${field}" value="${value}" ${answerFor(field) === value ? "checked" : ""}/> ${esc(T.options[j])}</label>
             `).join("")}
           </div>
         </div>
       `).join("")}
 
-      <div class="section-heading">Additional Comments</div>
-      <div class="field">
-        <label>Comments or suggestions on how the questionnaire could be improved (structure, appearance, or design)?</label>
-        <textarea id="f-comment-improve">${esc(existing?.comment_improve || "")}</textarea>
-      </div>
-      <div class="field">
-        <label>Were any important symptoms, problems, or concerns missed out by the questionnaire?</label>
-        <textarea id="f-comment-missed">${esc(existing?.comment_missed || "")}</textarea>
-      </div>
-      <div class="field">
-        <label>Do you feel any areas or problems in the questionnaire were over-represented?</label>
-        <textarea id="f-comment-overrepresented">${esc(existing?.comment_overrepresented || "")}</textarea>
-      </div>
+      <div class="section-heading">${esc(T.commentsHeading)}</div>
+      ${commentBlock("commentImprove", "comment_improve", "f-comment-improve")}
+      ${commentBlock("commentMissed", "comment_missed", "f-comment-missed")}
+      ${commentBlock("commentOverrepresented", "comment_overrepresented", "f-comment-overrepresented")}
 
       <div class="btn-row">
         <button class="btn secondary" id="cancel-btn">Cancel</button>
@@ -616,15 +777,40 @@ function screenQQ10(patient, tool, existing) {
   document.getElementById("back-btn").onclick = backTo;
   document.getElementById("cancel-btn").onclick = backTo;
 
-  document.getElementById("save-btn").onclick = async () => {
-    const body = { patientId: patient.id, tool };
-    for (const [field] of QQ10_QUESTIONS) {
+  wireQq10Mic("commentImprove", "f-comment-improve");
+  wireQq10Mic("commentMissed", "f-comment-missed");
+  wireQq10Mic("commentOverrepresented", "f-comment-overrepresented");
+
+  const collect = () => {
+    const answers = {};
+    for (const field of QQ10_FIELDS) {
       const checked = root.querySelector(`input[name="${field}"]:checked`);
-      body[field] = checked ? checked.value : null;
+      answers[field] = checked ? checked.value : null;
     }
-    body.commentImprove = document.getElementById("f-comment-improve").value.trim() || null;
-    body.commentMissed = document.getElementById("f-comment-missed").value.trim() || null;
-    body.commentOverrepresented = document.getElementById("f-comment-overrepresented").value.trim() || null;
+    return {
+      answers,
+      comments: {
+        commentImprove: document.getElementById("f-comment-improve").value,
+        commentMissed: document.getElementById("f-comment-missed").value,
+        commentOverrepresented: document.getElementById("f-comment-overrepresented").value,
+      },
+    };
+  };
+
+  root.querySelectorAll('input[name="qq10_lang"]').forEach((el) => {
+    el.addEventListener("change", () => {
+      if (activeQq10Recorder && activeQq10Recorder.state === "recording") activeQq10Recorder.stop();
+      screenQQ10(patient, tool, existing, { language: el.value, ...collect() });
+    });
+  });
+
+  document.getElementById("save-btn").onclick = async () => {
+    const { answers, comments } = collect();
+    const body = { patientId: patient.id, tool, language: lang, ...answers };
+    body.commentImprove = comments.commentImprove.trim() || null;
+    body.commentMissed = comments.commentMissed.trim() || null;
+    body.commentOverrepresented = comments.commentOverrepresented.trim() || null;
+    body.nativeNotes = qq10NativeNotes;
 
     try {
       await api("/api/qq10", { method: "POST", body: JSON.stringify(body) });
@@ -632,7 +818,7 @@ function screenQQ10(patient, tool, existing) {
       await navigatePatientDetail(patient.id);
     } catch (err) {
       lastError = err.message;
-      screenQQ10(patient, tool, existing);
+      screenQQ10(patient, tool, existing, { language: lang, answers, comments });
     }
   };
 }

@@ -2,11 +2,13 @@ import express from "express";
 import { query } from "../db.js";
 import { requireLogin } from "../auth.js";
 import { sendCsv } from "../csvUtil.js";
+import { transcribeAndTranslate } from "../voice.js";
 
 const router = express.Router();
 router.use(requireLogin);
 
 const VALID_TOOLS = ["braveeve", "nccn"];
+const VALID_LANGUAGES = ["en", "kn"];
 const VALID_ANSWERS = ["strongly_agree", "mostly_agree", "neither", "mostly_disagree", "strongly_disagree"];
 
 const QQ10_COLUMNS = [
@@ -19,17 +21,47 @@ const QQ10_COLUMNS = [
 router.get("/export.csv", async (req, res) => {
   try {
     const result = await query(
-      `SELECT p.patient_code, q.tool, ${QQ10_COLUMNS.join(", ")}, q.created_at
+      `SELECT p.patient_code, q.tool, q.language, ${QQ10_COLUMNS.join(", ")},
+              q.native_notes->>'commentImprove' AS native_comment_improve,
+              q.native_notes->>'commentMissed' AS native_comment_missed,
+              q.native_notes->>'commentOverrepresented' AS native_comment_overrepresented,
+              q.created_at
        FROM qq10_responses q
        JOIN patients p ON p.id = q.patient_id
        ORDER BY q.created_at DESC`
     );
-    sendCsv(res, "qq10_responses.csv", result.rows, ["patient_code", "tool", ...QQ10_COLUMNS, "created_at"]);
+    sendCsv(res, "qq10_responses.csv", result.rows, [
+      "patient_code", "tool", "language", ...QQ10_COLUMNS,
+      "native_comment_improve", "native_comment_missed", "native_comment_overrepresented", "created_at",
+    ]);
   } catch (err) {
     console.error("[qq10] export failed:", err);
     res.status(500).json({ error: "Could not export QQ-10 responses." });
   }
 });
+
+// Voice note for the QQ-10 comment boxes: raw audio in, { nativeText,
+// englishText } out. Nothing is saved here -- the team member reviews/edits
+// the text before it goes in with the actual Save.
+router.post(
+  "/transcribe",
+  express.raw({ type: "*/*", limit: "10mb" }),
+  async (req, res) => {
+    if (!req.body || !Buffer.isBuffer(req.body) || req.body.length === 0) {
+      return res.status(400).json({ error: "No audio received." });
+    }
+    try {
+      const mimeType = req.headers["content-type"] || "audio/webm";
+      const { nativeText, englishText } = await transcribeAndTranslate(req.body, mimeType);
+      res.json({ nativeText, englishText });
+    } catch (err) {
+      console.error("[qq10] transcribe failed:", err);
+      res.status(502).json({
+        error: "Couldn't transcribe that. Please try again, or type the comment instead.",
+      });
+    }
+  }
+);
 
 // Fetch an existing response for a patient+tool, if one exists — used to
 // pre-fill the form when reviewing/editing rather than creating fresh.
@@ -54,6 +86,10 @@ router.post("/", async (req, res) => {
   }
   if (!b.patientId) {
     return res.status(400).json({ error: "patientId is required." });
+  }
+
+  if (b.language && !VALID_LANGUAGES.includes(b.language)) {
+    return res.status(400).json({ error: "language must be 'en' or 'kn'." });
   }
 
   const answerFields = [
@@ -97,6 +133,10 @@ router.post("/", async (req, res) => {
         b.commentImprove || null, b.commentMissed || null, b.commentOverrepresented || null,
         req.session.userId,
       ]
+    );
+    await query(
+      "UPDATE qq10_responses SET language = $1, native_notes = $2 WHERE id = $3",
+      [b.language || null, JSON.stringify(b.nativeNotes || {}), result.rows[0].id]
     );
     res.json({ id: result.rows[0].id });
   } catch (err) {

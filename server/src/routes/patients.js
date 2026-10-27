@@ -17,6 +17,17 @@ function randomFirstTool() {
   return Math.random() < 0.5 ? "braveeve" : "nccn";
 }
 
+const VALID_ADMIN_MODES = ["in_person", "phone_call"];
+
+// Saved with its own small UPDATE (after the main insert/update) so the
+// long positional-parameter lists below stay untouched. If the field isn't
+// sent at all, whatever is stored is left alone.
+async function saveAdministrationMode(patientId, mode) {
+  if (mode === undefined) return;
+  const value = VALID_ADMIN_MODES.includes(mode) ? mode : null;
+  await query("UPDATE patients SET administration_mode = $1 WHERE id = $2", [value, patientId]);
+}
+
 async function upsertHcp(hcp) {
   if (!hcp || !hcp.name) return null;
   const result = await query(
@@ -105,6 +116,8 @@ router.post("/", async (req, res) => {
       ]
     );
 
+    await saveAdministrationMode(result.rows[0].id, b.administrationMode);
+
     res.json({ id: result.rows[0].id, patientCode: result.rows[0].patient_code, firstTool: result.rows[0].first_tool });
   } catch (err) {
     console.error("[patients] create failed:", err);
@@ -143,7 +156,7 @@ router.get("/export.csv", async (req, res) => {
        ORDER BY p.created_at DESC`
     );
     const columns = [
-      "patient_code", "name", "age", "date_of_birth", "place_of_residence", "smartphone_familiarity",
+      "patient_code", "name", "age", "date_of_birth", "administration_mode", "place_of_residence", "smartphone_familiarity",
       "marital_status", "family_type", "education_level", "occupation_status", "occupation_detail",
       "religion", "religion_other", "health_insurance", "insurance_type", "insurance_type_other",
       "family_history_cancer", "family_history_relationship", "stage_of_cancer", "date_of_diagnosis",
@@ -221,6 +234,7 @@ router.put("/:id", async (req, res) => {
         treatingHcpId, req.params.id,
       ]
     );
+    await saveAdministrationMode(req.params.id, b.administrationMode);
     res.json({ ok: true });
   } catch (err) {
     console.error("[patients] update failed:", err);
