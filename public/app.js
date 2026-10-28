@@ -569,6 +569,9 @@ const QQ10_TEXT = {
     commentImprove: "Comments or suggestions on how the questionnaire could be improved (structure, appearance, or design)?",
     commentMissed: "Were any important symptoms, problems, or concerns missed out by the questionnaire?",
     commentOverrepresented: "Do you feel any areas or problems in the questionnaire were over-represented?",
+    commentImprovePrompts: ["Was anything about the way the questions were written, arranged, or presented difficult to understand or answer?", "Was anything confusing, unclear, or difficult to answer?", "Do you have any suggestions for making the questionnaire easier to understand or complete?"],
+    commentMissedPrompts: ["Was there anything related to your experience or condition that you wanted to mention but did not find a question about?", "Is there anything else about your experience that you think the questionnaire should ask about?", "Is there anything you think is important about your experience that has not been covered in these questions?"],
+    commentOverrepresentedPrompts: ["Did you feel that any topic or type of question was asked about more often than you thought was necessary?", "Were there any questions that felt repetitive or covered similar things?", "Were there any topics that you felt were given more attention than necessary in the questionnaire?"],
   },
   kn: {
     instructions: "ನೀವು ಇತ್ತೀಚೆಗೆ ಪೂರ್ಣಗೊಳಿಸಿದ ಪ್ರಶ್ನಾವಳಿಯ ಬಗ್ಗೆ ನಿಮ್ಮ ಭಾವನೆಗಳಿಗೆ ಹೆಚ್ಚು ಹೊಂದುವ ಉತ್ತರವನ್ನು ಪ್ರತಿ ಹೇಳಿಕೆಯ ಕೆಳಗೆ ಗುರುತಿಸಿ.",
@@ -595,6 +598,9 @@ const QQ10_TEXT = {
     commentImprove: "ಪ್ರಶ್ನಾವಳಿಯನ್ನು ಹೇಗೆ ಸುಧಾರಿಸಬಹುದು (ರಚನೆ, ಸ್ವರೂಪ ಅಥವಾ ವಿನ್ಯಾಸ) ಎಂಬ ಬಗ್ಗೆ ಯಾವುದೇ ಕಾಮೆಂಟ್‌ಗಳು ಅಥವಾ ಸಲಹೆಗಳಿವೆಯೇ?",
     commentMissed: "ಪ್ರಶ್ನಾವಳಿಯಲ್ಲಿ ಯಾವುದೇ ಪ್ರಮುಖ ಲಕ್ಷಣಗಳು, ಸಮಸ್ಯೆಗಳು ಅಥವಾ ಕಾಳಜಿಗಳು ಬಿಟ್ಟುಹೋಗಿವೆಯೇ?",
     commentOverrepresented: "ಪ್ರಶ್ನಾವಳಿಯಲ್ಲಿ ಯಾವುದೇ ಕ್ಷೇತ್ರಗಳು ಅಥವಾ ಸಮಸ್ಯೆಗಳಿಗೆ ಅಗತ್ಯಕ್ಕಿಂತ ಹೆಚ್ಚು ಒತ್ತು ನೀಡಲಾಗಿದೆ ಎಂದು ನಿಮಗೆ ಅನಿಸುತ್ತದೆಯೇ?",
+    commentImprovePrompts: ["ಪ್ರಶ್ನೆಗಳನ್ನು ಬರೆಯುವ, ಜೋಡಿಸುವ ಅಥವಾ ಪ್ರಸ್ತುತಪಡಿಸುವ ವಿಧಾನದ ಬಗ್ಗೆ ಏನಾದರೂ ಅರ್ಥಮಾಡಿಕೊಳ್ಳಲು ಅಥವಾ ಉತ್ತರಿಸಲು ಕಷ್ಟವಾಗಿದೆಯೇ?", "ಏನಾದರೂ ಗೊಂದಲಮಯ, ಅಸ್ಪಷ್ಟ ಅಥವಾ ಉತ್ತರಿಸಲು ಕಷ್ಟಕರವಾಗಿದೆಯೇ?", "ಪ್ರಶ್ನಾವಳಿಯನ್ನು ಅರ್ಥಮಾಡಿಕೊಳ್ಳಲು ಅಥವಾ ಪೂರ್ಣಗೊಳಿಸಲು ಸುಲಭಗೊಳಿಸಲು ನೀವು ಯಾವುದೇ ಸಲಹೆಗಳನ್ನು ಹೊಂದಿದ್ದೀರಾ?"],
+    commentMissedPrompts: ["ನಿಮ್ಮ ಅನುಭವ ಅಥವಾ ಸ್ಥಿತಿಗೆ ಸಂಬಂಧಿಸಿದ ಯಾವುದಾದರೂ ವಿಷಯವನ್ನು ನೀವು ಉಲ್ಲೇಖಿಸಲು ಬಯಸಿದ್ದೀರಿ ಆದರೆ ಪ್ರಶ್ನೆಯನ್ನು ಕಂಡುಹಿಡಿಯಲಿಲ್ಲವೇ?", "ನಿಮ್ಮ ಅನುಭವದ ಬಗ್ಗೆ ಪ್ರಶ್ನಾವಳಿಯಲ್ಲಿ ಕೇಳಬೇಕೆಂದು ನೀವು ಭಾವಿಸುವ ಬೇರೆ ಏನಾದರೂ ಇದೆಯೇ?", "ಈ ಪ್ರಶ್ನೆಗಳಲ್ಲಿ ಒಳಗೊಳ್ಳದ ನಿಮ್ಮ ಅನುಭವದ ಬಗ್ಗೆ ನೀವು ಮುಖ್ಯವೆಂದು ಭಾವಿಸುವ ಯಾವುದೇ ವಿಷಯವಿದೆಯೇ?"],
+    commentOverrepresentedPrompts: ["ಯಾವುದೇ ವಿಷಯ ಅಥವಾ ಪ್ರಶ್ನೆಯ ಪ್ರಕಾರವನ್ನು ನೀವು ಅಗತ್ಯವೆಂದು ಭಾವಿಸಿದ್ದಕ್ಕಿಂತ ಹೆಚ್ಚಾಗಿ ಕೇಳಲಾಗಿದೆ ಎಂದು ನೀವು ಭಾವಿಸಿದ್ದೀರಾ?", "ಪುನರಾವರ್ತಿತವೆಂದು ಭಾವಿಸುವ ಅಥವಾ ಇದೇ ರೀತಿಯ ವಿಷಯಗಳನ್ನು ಒಳಗೊಂಡಿರುವ ಯಾವುದೇ ಪ್ರಶ್ನೆಗಳಿವೆಯೇ?", "ಪ್ರಶ್ನಾವಳಿಯಲ್ಲಿ ಅಗತ್ಯಕ್ಕಿಂತ ಹೆಚ್ಚಿನ ಗಮನ ನೀಡಲಾಗಿದೆ ಎಂದು ನೀವು ಭಾವಿಸಿದ ಯಾವುದೇ ವಿಷಯಗಳಿವೆಯೇ?"],
   },
 };
 
@@ -727,6 +733,7 @@ function screenQQ10(patient, tool, existing, draft) {
   const commentBlock = (field, col, textareaId) => `
     <div class="field">
       <label>${esc(T[field])}</label>
+      <div class="qq10-prompts" style="color:var(--muted);font-size:0.9em;line-height:1.5;margin:4px 0 8px">${(T[field + "Prompts"] || []).map((p) => `<div>(${esc(p)})</div>`).join("")}</div>
       ${qq10MicHtml(field)}
       <textarea id="${textareaId}">${esc(commentFor(field, col))}</textarea>
     </div>
